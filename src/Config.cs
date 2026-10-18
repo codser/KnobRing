@@ -36,8 +36,7 @@ namespace KnobRing
         public double TimeoutSeconds = 6;          // 0 = never
         public Color Accent = Color.FromArgb(47, 107, 255);
         public double Size = 1.0;
-        public bool KnobPressOpensRing = true;      // kept for older files; OpenWith decides
-        public string OpenWith = "double";          // double | single | off
+        public bool KnobPressOpensRing = true;
         public string Position = "mouse";          // mouse | center
         public bool RememberLast = true;
         public bool ShowLabels = true;
@@ -116,8 +115,6 @@ namespace KnobRing
                 var acc = Str(Get(settings, "accent"));
                 if (acc.Length > 0) { try { cfg.Accent = ColorTranslator.FromHtml(acc); } catch { } }
                 cfg.KnobPressOpensRing = Bool(Get(settings, "knobPressOpensRing"), true);
-                var ow = Str(Get(settings, "openWith")).ToLowerInvariant();
-                cfg.OpenWith = ow == "single" || ow == "off" || ow == "double" ? ow : (cfg.KnobPressOpensRing ? "double" : "off");
                 cfg.RememberLast = Bool(Get(settings, "rememberLast"), true);
                 cfg.ShowLabels = Bool(Get(settings, "showLabels"), true);
                 cfg.Liquid = Math.Max(0, Math.Min(1, Num(Get(settings, "liquid"), 35) / 100.0));
@@ -187,7 +184,7 @@ namespace KnobRing
             sb.Append("    \"size\": ").Append(Size.ToString("0.##", CultureInfo.InvariantCulture)).Append(",\n");
             sb.Append("    \"timeoutSeconds\": ").Append(TimeoutSeconds.ToString("0.##", CultureInfo.InvariantCulture)).Append(",\n");
             sb.Append("    \"position\": ").Append(Q(Position)).Append(",\n");
-            sb.Append("    \"openWith\": ").Append(Q(OpenWith)).Append(",\n");
+            sb.Append("    \"knobPressOpensRing\": ").Append(KnobPressOpensRing ? "true" : "false").Append(",\n");
             sb.Append("    \"rememberLast\": ").Append(RememberLast ? "true" : "false").Append(",\n");
             sb.Append("    \"showLabels\": ").Append(ShowLabels ? "true" : "false").Append(",\n");
             sb.Append("    \"liquid\": ").Append((int)Math.Round(Liquid * 100)).Append(",\n");
