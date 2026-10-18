@@ -102,3 +102,7 @@ Both write `out/KnobRing.exe`.
 
 - Apps running as administrator only accept shortcuts from KnobRing if KnobRing is also run as administrator.
 - Raw media keys can't be blocked, so the Windows volume pop-up may flash while you turn the knob with the ring open. The volume itself won't change.
+
+## License
+
+[MIT](LICENSE): free to use, change and share, as long as the copyright notice stays with it.
