@@ -22,7 +22,31 @@ namespace KnobRing
         public float Liquid = 0.35f;        // 0 = solid glide, 1 = very gooey
 
         // animation state
-        public float Open = 0f;             // 0..1 (eased in Step)
+        public float Open = 1f;             // 1 = fully shown; falls to 0 while the ring closes
+        public float IntroT = 99f;          // seconds since the ring appeared (bounce-in); large = already in
+
+        const float HubIn = 0.30f, SlotDelay0 = 0.10f, SlotStagger = 0.045f, SlotIn = 0.42f;
+
+        // seconds until every part has bounced in
+        public float IntroDuration
+        {
+            get { return SlotDelay0 + (Items.Count / 2) * SlotStagger + SlotIn; }
+        }
+
+        // ease with an overshoot: goes past 1 and settles back, like a soft bounce
+        static float BackOut(float t, float k = 2.1f)
+        {
+            t = Math.Max(0, Math.Min(1, t));
+            float u = t - 1;
+            return 1 + (k + 1) * u * u * u + k * u * u;
+        }
+
+        float SlotProgress(int i)
+        {
+            int n = Math.Max(1, Items.Count);
+            int d = Math.Min(i, n - i);                     // spreads down both sides from the top
+            return Math.Max(0, Math.Min(1, (IntroT - SlotDelay0 - d * SlotStagger) / SlotIn));
+        }
         float[] _slotScale = new float[0];
 
         // the liquid highlight: a head that springs to the selected slot and a tail that trails behind it
@@ -189,7 +213,7 @@ namespace KnobRing
                 float c = size / 2f;
                 float open = Ease(Open);
                 g.TranslateTransform(c, c);
-                float s = Scale * (0.84f + 0.16f * open);
+                float s = Scale * (0.9f + 0.1f * open);
                 g.ScaleTransform(s, s);
 
                 int n = Items.Count;
@@ -197,7 +221,9 @@ namespace KnobRing
                 if (_slotScale.Length != n) ResetAnimation();
 
                 if (float.IsNaN(_head)) ResetAnimation();
-                float ringR = R * (0.55f + 0.45f * open);
+                int selI = Math.Max(0, Math.Min(n - 1, Selected));
+                float selP = n > 0 ? SlotProgress(selI) : 1f;
+                float ringR = R * (0.72f + 0.28f * Ease(selP));
                 var pos = new PointF[n];
                 var rad = new float[n];
                 var alphas = new int[n];
@@ -205,24 +231,25 @@ namespace KnobRing
                 // slots: white discs, staggered pop-out from the centre
                 for (int i = 0; i < n; i++)
                 {
-                    float local = Ease((Open * 1.35f) - i * (0.35f / Math.Max(n, 1)));
+                    float p = SlotProgress(i);
+                    float local = Math.Min(1f, p * 3f) * open;          // fade in quickly, fade out on close
                     float a = SlotAngle(i);
-                    float rr = R * (0.55f + 0.45f * local);
+                    float rr = R * (0.72f + 0.28f * Ease(p));
                     pos[i] = new PointF((float)Math.Cos(a) * rr, (float)Math.Sin(a) * rr);
-                    rad[i] = SlotR * _slotScale[i] * (0.7f + 0.3f * local);
+                    rad[i] = SlotR * _slotScale[i] * BackOut(p);
                     alphas[i] = (int)(255 * local);
-                    if (local <= 0.001f) continue;
+                    if (local <= 0.001f || rad[i] <= 0.5f) continue;
                     float x = pos[i].X, y = pos[i].Y, sr = rad[i];
                     DrawShadow(g, x, y, sr, alphas[i]);
                     using (var b = new SolidBrush(Color.FromArgb(alphas[i], 248, 248, 250)))
                         g.FillEllipse(b, x - sr, y - sr, sr * 2, sr * 2);
-                    using (var p = new Pen(Color.FromArgb((int)(28 * local), 0, 0, 0), 1f))
-                        g.DrawEllipse(p, x - sr, y - sr, sr * 2, sr * 2);
+                    using (var edge = new Pen(Color.FromArgb((int)(28 * local), 0, 0, 0), 1f))
+                        g.DrawEllipse(edge, x - sr, y - sr, sr * 2, sr * 2);
                 }
 
                 // the liquid highlight
-                float headR = SlotR * SelScale * _wob * (0.7f + 0.3f * open) + 0.8f;
-                int blobAlpha = (int)(255 * open * _blobA);
+                float headR = SlotR * SelScale * _wob * BackOut(selP) + 0.8f;
+                int blobAlpha = (int)(255 * open * _blobA * Math.Min(1f, selP * 3f));
                 if (n > 0 && blobAlpha > 2)
                 {
                     float hx = (float)Math.Cos(_head) * ringR, hy = (float)Math.Sin(_head) * ringR;
@@ -297,9 +324,13 @@ namespace KnobRing
                     DrawIcon(g, Items[i], pos[i].X, pos[i].Y, rad[i], Color.FromArgb(alphas[i], fg), alphas[i]);
                 }
 
-                // hub
-                float hubA = Ease(Open * 1.2f);
+                // hub: bounces in first
+                float hubP = Math.Max(0, Math.Min(1, IntroT / HubIn));
+                float hubA = Math.Min(1f, hubP * 3f) * open;
+                float hubS = BackOut(hubP, 2.4f);
                 int ha = (int)(240 * hubA);
+                var hubState = g.Save();
+                g.ScaleTransform(Math.Max(0.001f, hubS), Math.Max(0.001f, hubS));
                 DrawShadow(g, 0, 0, HubR, (int)(255 * hubA));
                 using (var b = new SolidBrush(Color.FromArgb(ha, 24, 24, 28)))
                     g.FillEllipse(b, -HubR, -HubR, HubR * 2, HubR * 2);
@@ -308,7 +339,7 @@ namespace KnobRing
                 if (n > 0 && _blobA > 0.05f)
                 {
                     float pa = _head;
-                    int pA = (int)(255 * hubA * _blobA);
+                    int pA = (int)(255 * hubA * _blobA * Math.Min(1f, selP * 3f));
                     var tip = new PointF((float)Math.Cos(pa) * (HubR + 7), (float)Math.Sin(pa) * (HubR + 7));
                     float side = 0.17f;
                     var l = new PointF((float)Math.Cos(pa - side) * (HubR - 1), (float)Math.Sin(pa - side) * (HubR - 1));
@@ -335,6 +366,7 @@ namespace KnobRing
                     g.DrawString(t, titleFont, tb, new RectangleF(-HubR + 8, -HubR * 0.62f, HubR * 2 - 16, 14), sf);
                     g.DrawString(label, labelFont, lb, new RectangleF(-HubR + 9, -10, HubR * 2 - 18, 34), sf);
                 }
+                g.Restore(hubState);
             }
             return bmp;
         }
@@ -356,6 +388,7 @@ namespace KnobRing
             if (icon.Length == 0) icon = it.Type == "ring" ? "more" : (it.Label.Length > 0 ? it.Label.Substring(0, 1).ToUpperInvariant() : "?");
             if (it.Type == "__back") icon = "back";
 
+            if (VectorIcons.Draw(g, icon, x, y, r * 0.95f, fg, 1.7f)) return;
             char glyph;
             if (Icons.Map.TryGetValue(icon, out glyph))
             {
@@ -383,8 +416,8 @@ namespace KnobRing
             }
 
             if (icon.Length > 3) icon = icon.Substring(0, 3);
-            float fs = icon.Length == 1 ? r * 0.8f : icon.Length == 2 ? r * 0.62f : r * 0.48f;
-            using (var f = new Font("Segoe UI Semibold", fs, FontStyle.Bold, GraphicsUnit.Pixel))
+            float fs = icon.Length == 1 ? r * 0.82f : icon.Length == 2 ? r * 0.64f : r * 0.5f;
+            using (var f = new Font(Th.HeadFamilyName, fs, FontStyle.Regular, GraphicsUnit.Pixel))
             using (var b = new SolidBrush(fg))
             using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                 g.DrawString(icon, f, b, new RectangleF(x - r, y - r, r * 2, r * 2), sf);

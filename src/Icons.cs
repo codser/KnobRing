@@ -75,7 +75,7 @@ namespace KnobRing
             }
         }
 
-        public static bool IsGlyph(string icon) { return !string.IsNullOrEmpty(icon) && Map.ContainsKey(icon.Trim()); }
+        public static bool IsGlyph(string icon) { return !string.IsNullOrEmpty(icon) && (Map.ContainsKey(icon.Trim()) || VectorIcons.Has(icon)); }
         public static bool IsImage(string icon)
         {
             icon = (icon ?? "").Trim();

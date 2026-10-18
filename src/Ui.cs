@@ -21,6 +21,8 @@ namespace KnobRing
         static readonly Dictionary<string, Font> _fonts = new Dictionary<string, Font>();
         static string _head;
 
+        public static string HeadFamilyName { get { return HeadFamily; } }
+
         static string HeadFamily
         {
             get
@@ -273,6 +275,7 @@ namespace KnobRing
 
         public void Glyph(string name, float px, Color c, RectangleF r)
         {
+            if (VectorIcons.Draw(G, name, r.X + r.Width / 2f, r.Y + r.Height / 2f, px * 1.3f, c, 1.7f)) return;
             char ch;
             if (!Icons.Map.TryGetValue(name ?? "", out ch)) return;
             Text(ch.ToString(), Th.Icon(px), c, new RectangleF(r.X, r.Y + 1, r.Width, r.Height), StringAlignment.Center);

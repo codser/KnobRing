@@ -24,6 +24,7 @@ KnobRing was built for the **AULA F75**, but works with any keyboard whose knob 
   - press a media key
   - open a sub-ring with more actions
 - **Liquid highlight.** The highlight flows between options. A *Liquid feel* slider goes from a solid glide to fully gooey.
+- **Minimal line icons** for every action, plus a bouncy opening: the centre pops in first, then the options appear one by one down both sides of the ring.
 - **A settings window in the style of G HUB.**
   - Edit any slot: record shortcuts, pick from 32 icons, use letters or your own PNG.
   - The live preview ring follows the real knob while the window is in front.
@@ -97,6 +98,7 @@ Both write `out/KnobRing.exe`.
 | `SettingsForm.cs`, `Ui.cs`, `Dialogs.cs` | The settings window and its custom-drawn dark UI |
 | `Actions.cs` | Parses and sends shortcuts, text, media keys and launches |
 | `Config.cs` | Loads and saves `rings.json` |
+| `VectorIcons.cs` | KnobRing's own line icons, drawn from SVG-style paths |
 
 ## Notes
 

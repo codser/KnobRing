@@ -56,7 +56,8 @@ namespace KnobRing
             _afterClose = null;
             Renderer.Scale = Native.DpiScaleAt(center.X, center.Y) * (float)Program.Config.Size;
             Renderer.ResetAnimation();
-            Renderer.Open = 0f;
+            Renderer.Open = 1f;
+            Renderer.IntroT = 0f;
             Renderer.HubHover = false;
             int size = Renderer.PixelSize;
             var wa = Screen.FromPoint(center).WorkingArea;
@@ -76,7 +77,8 @@ namespace KnobRing
         public void Replay()
         {
             Renderer.ResetAnimation();
-            Renderer.Open = 0f;
+            Renderer.Open = 1f;
+            Renderer.IntroT = 0f;
             _phaseStart = DateTime.Now;
             _closing = false;
             _anim.Start();
@@ -118,15 +120,16 @@ namespace KnobRing
             double ms = (DateTime.Now - _phaseStart).TotalMilliseconds;
             if (_closing)
             {
-                Renderer.Open = (float)Math.Max(0, 1 - ms / 110.0);
+                Renderer.Open = (float)Math.Max(0, 1 - ms / 120.0);
                 Present((byte)(255 * Renderer.Open));
                 if (Renderer.Open <= 0) Finish();
                 return;
             }
-            Renderer.Open = (float)Math.Min(1.0, ms / 190.0);
+            Renderer.IntroT = (float)(ms / 1000.0);
+            Renderer.Open = 1f;
             bool moving = Renderer.Step();
             Present();
-            if (!moving && Renderer.Open >= 1) _anim.Stop();
+            if (!moving && Renderer.IntroT >= Renderer.IntroDuration) _anim.Stop();
         }
 
         void Present(byte alpha = 255)
