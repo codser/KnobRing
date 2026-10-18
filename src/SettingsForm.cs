@@ -955,8 +955,21 @@ namespace KnobRing
             bool startup = KnobRingApp.IsStartup();
             ToggleRow(ui, c2, 0, "Start with Windows", "KnobRing runs quietly in the tray after you sign in.", startup,
                 () => KnobRingApp.SetStartup(!KnobRingApp.IsStartup()));
-            ToggleRow(ui, c2, 1, "Knob press opens the ring", "Off: the knob press mutes, like normal.", _cfg.KnobPressOpensRing,
-                () => { _cfg.KnobPressOpensRing = !_cfg.KnobPressOpensRing; Changed(); });
+            {
+                // row 1: how the knob opens the ring
+                var r1 = new RectangleF(c2.X + 16, c2.Y + 60 + 1 * 70, c2.Width - 32, 66);
+                ui.Text("Open the ring with", Th.Bold(15), Th.Text, new RectangleF(r1.X + 6, r1.Y + 4, 200, 22));
+                var opts = new[] { "double", "single", "off" };
+                var names = new[] { "Double press", "Single press", "Off" };
+                float ow = (r1.Width - 12 - 12) / 3f;
+                for (int k = 0; k < 3; k++)
+                {
+                    string v = opts[k];
+                    ui.Button(new RectangleF(r1.X + 6 + k * (ow + 6), r1.Y + 28, ow, 34), names[k], Ui.B.Toggle,
+                        () => { _cfg.OpenWith = v; _cfg.KnobPressOpensRing = v != "off"; Changed(); }, _cfg.OpenWith == v);
+                }
+                ui.Line(r1.X, r1.Bottom + 2, r1.Right, r1.Bottom + 2, Th.Hex("#1A1D25"));
+            }
             ToggleRow(ui, c2, 2, "Remember the last action", "The ring opens on the slot you used last, so press–press repeats it.", _cfg.RememberLast,
                 () => { _cfg.RememberLast = !_cfg.RememberLast; Changed(); });
             ToggleRow(ui, c2, 3, "Show the action name in the centre", "The middle of the ring names the highlighted slot.", _cfg.ShowLabels,

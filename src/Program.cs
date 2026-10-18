@@ -72,7 +72,12 @@ namespace KnobRing
         List<RingItem> _items = new List<RingItem>();
         int _selected;
         readonly Dictionary<string, int> _lastUsed = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        bool _muteDown, _paused;
+        bool _muteDown, _paused, _pressSwallowing;
+        DateTime _firstTap = DateTime.MinValue;
+        const double DoubleTapMs = 420;
+        KeySink _sink;
+        IntPtr _prevFg = IntPtr.Zero;
+        int _updateTries;
         bool _swallowLeftUp, _swallowOtherUp, _unhookPending, _mouseActive;
         Point _mouseOrigin;
         DateTime _lastInput;
@@ -233,8 +238,18 @@ namespace KnobRing
             }
             catch (Exception ex)
             {
-                Log.Write("Update failed: " + ex.Message);
+                Log.Write("Update failed (try " + (_updateTries + 1) + "): " + ex.Message);
                 if (movedSelf && !File.Exists(exe)) { try { File.Move(old, exe); } catch { } }
+                if (++_updateTries < 4 && File.Exists(upd))
+                {
+                    // usually the file is still being written or scanned: wait and try again
+                    _updating = false;
+                    var retry = new System.Windows.Forms.Timer { Interval = 3000 * _updateTries };
+                    retry.Tick += (s, e) => { retry.Stop(); retry.Dispose(); ApplyUpdate(); };
+                    retry.Start();
+                    return;
+                }
+                _updateTries = 0;
                 try
                 {
                     string failed = Path.Combine(dir, "KnobRing.update.failed.exe");
@@ -326,14 +341,27 @@ namespace KnobRing
                 return true;
             }
 
-            if (vk == VK_PRESS && c.KnobPressOpensRing)
+            if (vk == VK_PRESS && (c.OpenWith != "off" || _ring.IsShown))
             {
-                if (down)
+                if (!down) { _muteDown = false; return _pressSwallowing; }
+                if (_muteDown) return _pressSwallowing;          // key repeat
+                _muteDown = true;
+                if (_ring.IsShown) { _pressSwallowing = true; Post(Select); return true; }
+                if (c.OpenWith == "single") { _pressSwallowing = true; Post(OpenRing); return true; }
+                // double press: the first press is a normal mute, the second opens the ring
+                var now = DateTime.Now;
+                if ((now - _firstTap).TotalMilliseconds <= DoubleTapMs)
                 {
-                    if (!_muteDown) { _muteDown = true; Post(KnobPressed); }
+                    var first = _firstTap;
+                    _firstTap = DateTime.MinValue;
+                    _pressSwallowing = true;
+                    _guard.Hold(first);                          // put mute back to how it was before the first press
+                    Post(OpenRing);
+                    return true;
                 }
-                else _muteDown = false;
-                return true;
+                _firstTap = now;
+                _pressSwallowing = false;
+                return false;
             }
             if (!_ring.IsShown) return false;
 
@@ -438,6 +466,15 @@ namespace KnobRing
             _ring.Renderer.Liquid = (float)Program.Config.Liquid;
             _ring.Renderer.EaseAmount = (float)Program.Config.Ease;
             _ring.ShowAt(at);
+            // take keyboard focus with an invisible window, so volume/media commands from the knob come to us
+            try
+            {
+                _prevFg = Native.GetForegroundWindow();
+                if (_sink == null || _sink.IsDisposed) _sink = new KeySink();
+                _sink.Show();
+                Native.ForceForeground(_sink.Handle);
+            }
+            catch (Exception ex) { Log.Write(ex); }
             _mouseOrigin = new Point(p.X, p.Y);
             _mouseActive = false;
             _unhookPending = false;
@@ -503,10 +540,10 @@ namespace KnobRing
             }
 
             _lastUsed[_current.Name] = _selected;
-            // Hide first so the keys land in the app behind, then run the action.
+            // Hide first and give focus back, so the keys land in the app behind, then run the action.
             CloseRing(true, () =>
             {
-                var t = new System.Windows.Forms.Timer { Interval = 35 };
+                var t = new System.Windows.Forms.Timer { Interval = 70 };
                 t.Tick += (s, e) =>
                 {
                     t.Stop(); t.Dispose();
@@ -527,7 +564,22 @@ namespace KnobRing
             if (_swallowLeftUp || _swallowOtherUp) _unhookPending = true;   // wait for the button to come back up
             else _mouse.Uninstall();
             _idle.Stop();
+            ReleaseFocus();
             _ring.CloseRing(fast, after);
+        }
+
+        void ReleaseFocus()
+        {
+            try
+            {
+                if (_sink != null && !_sink.IsDisposed && _sink.Visible)
+                {
+                    if (_prevFg != IntPtr.Zero && Native.GetForegroundWindow() == _sink.Handle) Native.ForceForeground(_prevFg);
+                    _sink.Hide();
+                }
+            }
+            catch (Exception ex) { Log.Write(ex); }
+            _prevFg = IntPtr.Zero;
         }
 
         void Touch() { _lastInput = DateTime.Now; }

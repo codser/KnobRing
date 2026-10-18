@@ -46,12 +46,12 @@ KnobRing was built for the **AULA F75**, but works with any keyboard whose knob 
 
 | Do this | To |
 | --- | --- |
-| Press the knob | Open the ring for the app in front |
+| Double-press the knob | Open the ring for the app in front (a single press still mutes as normal; you can switch to single press or off in Settings) |
 | Turn the knob, scroll, or move the mouse in a direction | Move the highlight |
 | Press the knob again, left-click, or Enter | Run the highlighted action |
 | Point at the centre and click, right-click, or Esc | Close the ring without doing anything |
 
-When the ring is closed, the knob keeps controlling the volume as usual.
+When the ring is closed, the knob keeps controlling the volume as usual. While the ring is open, the knob never touches the volume.
 
 ## Settings file
 

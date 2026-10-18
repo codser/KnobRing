@@ -132,6 +132,31 @@ namespace KnobRing
         [DllImport("user32.dll")]
         public static extern bool GetCursorPos(out POINT p);
 
+        [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr hWnd);
+        [DllImport("user32.dll")] static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+        [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+        [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+
+        // Moves keyboard focus to a window even when another app is in front.
+        public static bool ForceForeground(IntPtr h)
+        {
+            try
+            {
+                if (h == IntPtr.Zero || !IsWindow(h)) return false;
+                IntPtr fg = GetForegroundWindow();
+                uint pid;
+                uint fgThread = GetWindowThreadProcessId(fg, out pid);
+                uint me = GetCurrentThreadId();
+                bool attached = fgThread != 0 && fgThread != me && AttachThreadInput(me, fgThread, true);
+                BringWindowToTop(h);
+                bool ok = SetForegroundWindow(h);
+                if (attached) AttachThreadInput(me, fgThread, false);
+                return ok;
+            }
+            catch { return false; }
+        }
+
         [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);
         [DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms);
         static bool _fast;
