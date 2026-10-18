@@ -19,10 +19,14 @@ namespace KnobRing
         [STAThread]
         static void Main(string[] args)
         {
-            bool created;
-            using (var mutex = new Mutex(true, "KnobRing_AULA_F75_single", out created))
+            bool afterUpdate = Array.Exists(args, a => a.Equals("--after-update", StringComparison.OrdinalIgnoreCase));
+            using (var mutex = new Mutex(false, "KnobRing_AULA_F75_single"))
             {
-                if (!created)
+                bool owned;
+                // right after an update the old copy may still be closing: wait for it instead of quitting
+                try { owned = mutex.WaitOne(afterUpdate ? 15000 : 0); }
+                catch (AbandonedMutexException) { owned = true; }
+                if (!owned)
                 {
                     // Already running: ask that copy to show its window, then quit.
                     try { using (var ev = EventWaitHandle.OpenExisting(OpenEventName)) ev.Set(); } catch { }
@@ -34,7 +38,8 @@ namespace KnobRing
                 Application.ThreadException += (s, e) => Log.Write(e.Exception);
                 AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Write(e.ExceptionObject);
                 bool atStartup = Array.Exists(args, a => a.Equals("--startup", StringComparison.OrdinalIgnoreCase));
-                Application.Run(new KnobRingApp(!atStartup));
+                try { Application.Run(new KnobRingApp(!atStartup)); }
+                finally { try { mutex.ReleaseMutex(); } catch { } }
             }
         }
     }
@@ -166,6 +171,7 @@ namespace KnobRing
             try
             {
                 string dir = Path.GetDirectoryName(Application.ExecutablePath);
+                CleanupOld(dir);
                 _updWatcher = new FileSystemWatcher(dir, "KnobRing.update.exe")
                 {
                     NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
@@ -177,26 +183,68 @@ namespace KnobRing
                 _updWatcher.Created += h;
                 _updWatcher.Changed += h;
                 _updWatcher.Renamed += (s, e) => h(s, null);
+                // also look every 20 s, in case a file event was missed
+                var poll = new System.Windows.Forms.Timer { Interval = 20000 };
+                poll.Tick += (s, e) => { if (File.Exists(Path.Combine(dir, "KnobRing.update.exe")) && !debounce.Enabled) debounce.Start(); };
+                poll.Start();
                 if (File.Exists(Path.Combine(dir, "KnobRing.update.exe"))) debounce.Start();
             }
             catch (Exception ex) { Log.Write(ex); }
         }
 
+        static void CleanupOld(string dir)
+        {
+            string old = Path.Combine(dir, "KnobRing.old.exe");
+            if (!File.Exists(old)) return;
+            var t = new System.Windows.Forms.Timer { Interval = 3000 };
+            int tries = 0;
+            t.Tick += (s, e) =>
+            {
+                try { File.Delete(old); t.Stop(); t.Dispose(); }
+                catch { if (++tries > 10) { t.Stop(); t.Dispose(); } }
+            };
+            t.Start();
+        }
+
+        // Windows lets a running exe be renamed (not overwritten): move ourselves aside, put the new build in our place,
+        // start it and quit. If anything fails, the update file is set aside so it can never loop.
+        bool _updating;
         void ApplyUpdate()
         {
+            if (_updating) return;
+            string exe = Application.ExecutablePath;
+            string dir = Path.GetDirectoryName(exe);
+            string upd = Path.Combine(dir, "KnobRing.update.exe");
+            string old = Path.Combine(dir, "KnobRing.old.exe");
+            if (!File.Exists(upd)) return;
+            _updating = true;
+            Log.Write("Updating KnobRing from " + upd);
+            bool movedSelf = false;
             try
             {
-                string exe = Application.ExecutablePath;
-                string upd = Path.Combine(Path.GetDirectoryName(exe), "KnobRing.update.exe");
-                if (!File.Exists(upd)) return;
-                Log.Write("Updating KnobRing from " + upd);
+                if (new FileInfo(upd).Length < 20000) throw new Exception("update file looks incomplete");
+                try { if (File.Exists(old)) File.Delete(old); } catch { }
+                File.Move(exe, old);
+                movedSelf = true;
+                File.Move(upd, exe);
                 bool reopen = _settings != null && !_settings.IsDisposed && _settings.Visible;
-                string cmd = "/c ping -n 3 127.0.0.1 >nul & move /y \"" + upd + "\" \"" + exe + "\" >nul & start \"\" \"" + exe + "\"" +
-                             (reopen ? "" : " --startup");
-                Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden });
+                Process.Start(new ProcessStartInfo(exe, "--after-update" + (reopen ? "" : " --startup")) { UseShellExecute = false });
                 ExitApp();
             }
-            catch (Exception ex) { Log.Write(ex); }
+            catch (Exception ex)
+            {
+                Log.Write("Update failed: " + ex.Message);
+                if (movedSelf && !File.Exists(exe)) { try { File.Move(old, exe); } catch { } }
+                try
+                {
+                    string failed = Path.Combine(dir, "KnobRing.update.failed.exe");
+                    if (File.Exists(failed)) File.Delete(failed);
+                    if (File.Exists(upd)) File.Move(upd, failed);
+                }
+                catch { }
+                Balloon("KnobRing couldn't update itself", "Close KnobRing and replace KnobRing.exe by hand.", ToolTipIcon.Warning);
+                _updating = false;
+            }
         }
 
         // ------------------------------------------------------------ settings window
