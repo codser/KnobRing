@@ -1,0 +1,7 @@
+out/
+bin/
+obj/
+*.exe
+*.pdb
+.vs/
+Thumbs.db
