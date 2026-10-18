@@ -19,7 +19,8 @@ namespace KnobRing
         public int Selected = 0;
         public bool HubHover = false;
         public bool ShowLabels = true;
-        public float Liquid = 0.35f;        // 0 = solid glide, 1 = very gooey
+        public float Liquid = 0.35f;        // 0 = solid glide, 1 = very gooey (shape)
+        public float EaseAmount = 0.25f;          // 0 = stiff, lands exactly; 1 = soft with a little overshoot (motion)
 
         // animation state
         public float Open = 1f;             // 1 = fully shown; falls to 0 while the ring closes
@@ -114,7 +115,9 @@ namespace KnobRing
             }
 
             // integrate in small fixed steps so the motion is the same at any frame rate
-            float HeadW = Lerp(19f, 11.5f, L), HeadZ = Lerp(1.0f, 0.74f, L);
+            float E = Math.Max(0f, Math.Min(1f, EaseAmount));
+            // up to the middle of the slider the head never overshoots (damping >= 1)
+            float HeadW = Lerp(32f, 10f, E), HeadZ = E <= 0.5f ? 1.0f : Lerp(1.0f, 0.72f, (E - 0.5f) * 2f);
             float TailW = Lerp(45f, 7.5f, L), TailZ = 1.0f;
             float WobW = 17f, WobZ = Lerp(0.6f, 0.3f, L);
             const float h = 1f / 480f;

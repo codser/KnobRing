@@ -23,7 +23,7 @@ KnobRing was built for the **AULA F75**, but works with any keyboard whose knob 
   - type a piece of text
   - press a media key
   - open a sub-ring with more actions
-- **Liquid highlight.** The highlight flows between options. A *Liquid feel* slider goes from a solid glide to fully gooey.
+- **Liquid highlight.** The highlight flows between options. *Liquid feel* sets its shape, from a solid glide to fully gooey, and *Ease* sets its motion, from stiff (lands exactly, no overshoot) to soft.
 - **Minimal line icons** for every action, plus a bouncy opening: the centre pops in first, then the options appear one by one down both sides of the ring.
 - **A settings window in the style of G HUB.**
   - Edit any slot: record shortcuts, pick from 32 icons, use letters or your own PNG.

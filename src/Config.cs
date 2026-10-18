@@ -41,6 +41,7 @@ namespace KnobRing
         public bool RememberLast = true;
         public bool ShowLabels = true;
         public double Liquid = 0.35;                // 0 = solid glide, 1 = very gooey
+        public double Ease = 0.25;                  // 0 = stiff (no overshoot), 1 = soft and bouncy
         public int KnobPressVk = 0xAD, KnobRightVk = 0xAF, KnobLeftVk = 0xAE;   // learned from the keyboard
 
         public static string Folder
@@ -117,6 +118,7 @@ namespace KnobRing
                 cfg.RememberLast = Bool(Get(settings, "rememberLast"), true);
                 cfg.ShowLabels = Bool(Get(settings, "showLabels"), true);
                 cfg.Liquid = Math.Max(0, Math.Min(1, Num(Get(settings, "liquid"), 35) / 100.0));
+                cfg.Ease = Math.Max(0, Math.Min(1, Num(Get(settings, "ease"), 25) / 100.0));
                 var pos = Str(Get(settings, "position")).ToLowerInvariant();
                 cfg.Position = pos == "center" || pos == "centre" ? "center" : "mouse";
                 var kk = Get(settings, "knobKeys") as IDictionary<string, object>;
@@ -186,6 +188,7 @@ namespace KnobRing
             sb.Append("    \"rememberLast\": ").Append(RememberLast ? "true" : "false").Append(",\n");
             sb.Append("    \"showLabels\": ").Append(ShowLabels ? "true" : "false").Append(",\n");
             sb.Append("    \"liquid\": ").Append((int)Math.Round(Liquid * 100)).Append(",\n");
+            sb.Append("    \"ease\": ").Append((int)Math.Round(Ease * 100)).Append(",\n");
             sb.Append("    \"knobKeys\": { \"press\": ").Append(KnobPressVk).Append(", \"right\": ").Append(KnobRightVk)
               .Append(", \"left\": ").Append(KnobLeftVk).Append(" }\n");
             sb.Append("  },\n  \"rings\": [\n");

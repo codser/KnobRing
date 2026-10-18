@@ -436,6 +436,7 @@ namespace KnobRing
             }
             _ring.Renderer.ShowLabels = Program.Config.ShowLabels;
             _ring.Renderer.Liquid = (float)Program.Config.Liquid;
+            _ring.Renderer.EaseAmount = (float)Program.Config.Ease;
             _ring.ShowAt(at);
             _mouseOrigin = new Point(p.X, p.Y);
             _mouseActive = false;

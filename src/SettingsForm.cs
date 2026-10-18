@@ -43,8 +43,8 @@ namespace KnobRing
         readonly RingRenderer _pr = new RingRenderer();
         Bitmap _prBmp;
         bool _prDirty = true;
-        RectangleF _ringRect, _sliderRect, _liquidRect;
-        int _drag;   // 1 = size slider, 2 = liquid slider
+        RectangleF _ringRect, _sliderRect, _liquidRect, _easeRect;
+        int _drag;   // 1 = size slider, 2 = liquid slider, 3 = ease slider
         readonly RingRenderer _mini = new RingRenderer();
         Bitmap _miniBmp;
         readonly Timer _miniCycle = new Timer { Interval = 1100 };
@@ -105,6 +105,7 @@ namespace KnobRing
                 if (_page != "settings") return false;
                 if (RectangleF.Inflate(_sliderRect, 4, 14).Contains(p)) _drag = 1;
                 else if (RectangleF.Inflate(_liquidRect, 4, 14).Contains(p)) _drag = 2;
+                else if (RectangleF.Inflate(_easeRect, 4, 14).Contains(p)) _drag = 3;
                 else return false;
                 SlideTo(p.X); return true;
             };
@@ -115,6 +116,8 @@ namespace KnobRing
             {
                 _pr.Liquid = (float)_cfg.Liquid;
                 _mini.Liquid = (float)_cfg.Liquid;
+                _pr.EaseAmount = (float)_cfg.Ease;
+                _mini.EaseAmount = (float)_cfg.Ease;
                 bool a = _pr.Step();
                 bool b = _page == "settings" && _mini.Step();
                 _prDirty = true;
@@ -874,11 +877,11 @@ namespace KnobRing
         // ---------------------------------------------------------------- settings page
         void PaintSettings(Ui ui)
         {
-            float cw = Math.Min(1000, W - 40), left = (W - cw) / 2, col = (cw - 16) / 2, top = HeaderH + 32;
+            float cw = Math.Min(1000, W - 40), left = (W - cw) / 2, col = (cw - 16) / 2, top = HeaderH + 20;
             float rx = left + col + 16;
 
             // RING LOOK
-            var c1 = Card(ui, left, top, col, 420, "Ring look");
+            var c1 = Card(ui, left, top, col, 446, "Ring look");
             ui.Caption("Highlight colour", c1.X + 22, c1.Y + 66);
             float sx = c1.X + 22;
             bool custom = true;
@@ -921,24 +924,34 @@ namespace KnobRing
             _mini.Scale = demo / _mini.PixelSize * S;
             _mini.Accent = _cfg.Accent;
             _mini.Liquid = (float)_cfg.Liquid;
+            _mini.EaseAmount = (float)_cfg.Ease;
             if (_miniBmp != null) _miniBmp.Dispose();
             _miniBmp = _mini.Render();
             ui.G.DrawImage(_miniBmp, demoR);
 
-            ui.Caption("Close the ring after", c1.X + 22, c1.Y + 330);
+            // Ease: how the highlight moves
+            ui.Caption("Ease", c1.X + 22, c1.Y + 298);
+            int ez = (int)Math.Round(_cfg.Ease * 100);
+            ui.Text(ez + "", Th.Bold(13), Th.Text, new RectangleF(c1.X + 22 + lwid - 60, c1.Y + 298, 60, 18), StringAlignment.Far);
+            _easeRect = new RectangleF(c1.X + 22, c1.Y + 330, lwid, 6);
+            Slider(ui, _easeRect, (float)_cfg.Ease);
+            ui.Text("Stiff", Th.Body(12), Th.Muted, new RectangleF(c1.X + 22, c1.Y + 344, 80, 18));
+            ui.Text("Soft", Th.Body(12), Th.Muted, new RectangleF(c1.X + 22 + lwid - 80, c1.Y + 344, 80, 18), StringAlignment.Far);
+
+            ui.Caption("Close the ring after", c1.X + 22, c1.Y + 370);
             var touts = new[] { 3.0, 6.0, 10.0, 0.0 };
             var tnames = new[] { "3 s", "6 s", "10 s", "Never" };
             float sw = (col - 44 - 18) / 4f;
             for (int i = 0; i < 4; i++)
             {
                 double v = touts[i];
-                ui.Button(new RectangleF(c1.X + 22 + i * (sw + 6), c1.Y + 352, sw, 42), tnames[i], Ui.B.Toggle,
+                ui.Button(new RectangleF(c1.X + 22 + i * (sw + 6), c1.Y + 390, sw, 40), tnames[i], Ui.B.Toggle,
                     () => { _cfg.TimeoutSeconds = v; Changed(); }, Math.Abs(_cfg.TimeoutSeconds - v) < 0.01);
             }
 
 
             // KNOB & BEHAVIOUR
-            var c2 = Card(ui, rx, top, col, 420, "Knob & behaviour");
+            var c2 = Card(ui, rx, top, col, 446, "Knob & behaviour");
             bool startup = KnobRingApp.IsStartup();
             ToggleRow(ui, c2, 0, "Start with Windows", "KnobRing runs quietly in the tray after you sign in.", startup,
                 () => KnobRingApp.SetStartup(!KnobRingApp.IsStartup()));
@@ -956,7 +969,7 @@ namespace KnobRing
                 () => { _cfg.Position = "center"; Changed(); }, _cfg.Position == "center");
 
             // KEYBOARD
-            float top2 = top + 420 + 16;
+            float top2 = top + 446 + 14;
             var c3 = Card(ui, left, top2, col, 320, "Keyboard");
             var dev = new RectangleF(c3.X + 22, c3.Y + 64, col - 44, 70);
             ui.Fill(dev, Th.Field, 10);
@@ -1086,6 +1099,13 @@ namespace KnobRing
 
         void SlideTo(float x)
         {
+            if (_drag == 3)
+            {
+                float f3 = Math.Max(0, Math.Min(1, (x - _easeRect.X) / _easeRect.Width));
+                double v3 = Math.Round(f3 * 100) / 100.0;
+                if (Math.Abs(v3 - _cfg.Ease) > 0.001) { _cfg.Ease = v3; Changed(); }
+                return;
+            }
             if (_drag == 2)
             {
                 float f2 = Math.Max(0, Math.Min(1, (x - _liquidRect.X) / _liquidRect.Width));
