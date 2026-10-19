@@ -131,6 +131,8 @@ namespace KnobRing
 
         [DllImport("user32.dll")]
         public static extern bool GetCursorPos(out POINT p);
+        [DllImport("user32.dll")]
+        public static extern IntPtr WindowFromPoint(POINT p);
 
         [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);
         [DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms);

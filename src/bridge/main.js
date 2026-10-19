@@ -6,8 +6,8 @@
   var host = 'PPRO';
   try { host = JSON.parse(cep.getHostEnvironment()).appName; } catch (e) {}
   var PORT = host === 'AEFT' ? 47322 : 47321;
-  var OPS = { get: 1, nudge: 1 };
-  var PROPS = { posx: 1, posy: 1, scale: 1, rotation: 1, opacity: 1 };
+  var OPS = { get: 1, nudge: 1, scrub: 1 };
+  var PROPS = { posx: 1, posy: 1, scale: 1, rotation: 1, opacity: 1, playhead: 1 };
 
   var http;
   try { http = require('http'); } catch (e) { status('Node.js is not available in this panel.'); return; }

@@ -16,7 +16,7 @@ var KnobRing = (function () {
         return s + unit;
     }
     function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
-    var UNIT = { posx: "", posy: "", scale: "%", rotation: "\u00B0", opacity: "%" };
+    var UNIT = { posx: "", posy: "", scale: "%", rotation: "\u00B0", opacity: "%", playhead: "" };
 
     // ================================================================ Premiere Pro
     function pprProp(comp, names, index) {
@@ -111,6 +111,20 @@ var KnobRing = (function () {
         return out(true, first, count > 1 ? count + " clips" : "");
     }
 
+    // moves the playhead by a number of frames (Premiere Pro)
+    function scrub(frames) {
+        var seq = app.project.activeSequence;
+        if (!seq) return out(false, "", "No sequence open");
+        var tpf = Number(seq.timebase);
+        var pos = Number(seq.getPlayerPosition().ticks);
+        var np = pos + Math.round(frames) * tpf;
+        var end = Number(seq.end);
+        if (np < 0) np = 0;
+        if (end > 0 && np > end) np = end;
+        seq.setPlayerPosition(String(np));
+        return out(true, String(np), "");
+    }
+
     // ================================================================ After Effects
     function aeSet(p, comp, v) {
         if (p.numKeys > 0) p.setValueAtTime(comp.time, v); else p.setValue(v);
@@ -178,6 +192,10 @@ var KnobRing = (function () {
             try {
                 if (!UNIT.hasOwnProperty(prop)) return out(false, "", "Unknown property");
                 delta = Number(delta) || 0;
+                if (op === "scrub") {
+                    if (BridgeTalk.appName === "aftereffects") return out(false, "", "Scrubbing is for Premiere Pro");
+                    return scrub(delta);
+                }
                 if (BridgeTalk.appName === "aftereffects") return afterEffects(op, prop, delta);
                 return premiere(op, prop, delta);
             } catch (e) {

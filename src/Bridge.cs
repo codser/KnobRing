@@ -16,7 +16,7 @@ namespace KnobRing
     internal static class Bridge
     {
         public const string ExtensionFolderName = "KnobRingBridge";
-        public static readonly string[] Files = { "manifest.xml", "index.html", "main.js", "host.jsx" };
+        public static readonly string[] Files = { "manifest.xml", "index.html", "main.js", "host.jsx", "panel/index.html", "panel/panel.js", "panel/icons.js" };
 
         public class Result { public bool Ok; public string Value = ""; public string Msg = ""; }
 
@@ -41,30 +41,34 @@ namespace KnobRing
             }
         }
 
-        // Copies the extension into the user's CEP folder and allows unsigned extensions.
-        // Returns true when something changed (Premiere / After Effects then needs a restart).
+        static byte[] Res(string name)
+        {
+            using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream(name))
+            {
+                if (s == null) throw new Exception("missing resource " + name);
+                using (var ms = new MemoryStream()) { s.CopyTo(ms); return ms.ToArray(); }
+            }
+        }
+
+        static bool WriteIfChanged(string dest, byte[] data)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(dest));
+            if (File.Exists(dest) && Same(File.ReadAllBytes(dest), data)) return false;
+            File.WriteAllBytes(dest, data);
+            return true;
+        }
+
+        // Copies the extension (the background bridge plus the "KnobRing" settings panel) into the user's CEP folder
+        // and allows unsigned extensions. Returns true when something changed (the Adobe apps then need a restart).
         public static bool EnsureInstalled()
         {
             bool changed = false;
             try
             {
-                string dir = ExtensionDir;
-                Directory.CreateDirectory(Path.Combine(dir, "CSXS"));
-                var asm = Assembly.GetExecutingAssembly();
                 foreach (var f in Files)
                 {
-                    byte[] data;
-                    using (var s = asm.GetManifestResourceStream("bridge." + f))
-                    {
-                        if (s == null) throw new Exception("missing bridge file " + f);
-                        using (var ms = new MemoryStream()) { s.CopyTo(ms); data = ms.ToArray(); }
-                    }
-                    string dest = Path.Combine(dir, f == "manifest.xml" ? Path.Combine("CSXS", f) : f);
-                    if (!File.Exists(dest) || !Same(File.ReadAllBytes(dest), data))
-                    {
-                        File.WriteAllBytes(dest, data);
-                        changed = true;
-                    }
+                    string rel = f == "manifest.xml" ? Path.Combine("CSXS", f) : f.Replace('/', Path.DirectorySeparatorChar);
+                    changed |= WriteIfChanged(Path.Combine(ExtensionDir, rel), Res("bridge." + f.Replace('/', '.')));
                 }
                 // CEP only loads unsigned extensions in debug mode. One value per CEP version.
                 for (int v = 9; v <= 14; v++)
@@ -94,7 +98,7 @@ namespace KnobRing
         // ------------------------------------------------------------ requests
         static readonly object Lock = new object();
         static double _pending;
-        static string _pendingProp;
+        static string _pendingProp, _pendingOp = "nudge";
         static int _pendingPort;
         static bool _busy;
         static Action<Result> _onResult;
@@ -106,12 +110,13 @@ namespace KnobRing
         }
 
         // Add delta to the property of everything selected. Turns that arrive while busy are merged.
-        public static void Nudge(int port, string prop, double delta, Action<Result> done)
+        public static void Nudge(int port, string prop, double delta, Action<Result> done, string op = "nudge")
         {
             lock (Lock)
             {
-                if (_pendingProp != prop || _pendingPort != port) { _pending = 0; }
+                if (_pendingProp != prop || _pendingPort != port || _pendingOp != op) { _pending = 0; }
                 _pendingProp = prop;
+                _pendingOp = op;
                 _pendingPort = port;
                 _pending += delta;
                 _onResult = done;
@@ -125,14 +130,14 @@ namespace KnobRing
         {
             while (true)
             {
-                double d; string prop; int port; Action<Result> cb;
+                double d; string prop, op; int port; Action<Result> cb;
                 lock (Lock)
                 {
                     if (Math.Abs(_pending) < 1e-9) { _busy = false; return; }
-                    d = _pending; prop = _pendingProp; port = _pendingPort; cb = _onResult;
+                    d = _pending; prop = _pendingProp; op = _pendingOp; port = _pendingPort; cb = _onResult;
                     _pending = 0;
                 }
-                var r = Send(port, "nudge", prop, d);
+                var r = Send(port, op, prop, d);
                 if (cb != null) { try { cb(r); } catch (Exception ex) { Log.Write(ex); } }
             }
         }
@@ -179,7 +184,7 @@ namespace KnobRing
     }
 
     // The properties the Transforms ring can change, with knob step sizes (normal / Ctrl = fine / Shift = coarse).
-    internal class TransformProp
+    public class TransformProp
     {
         public string Id, Label, Icon;
         public double Step, Fine, Coarse;

@@ -81,6 +81,13 @@ namespace KnobRing
         int _adjustToken;
         bool _bridgeWarned;
 
+        // Premiere Pro scrubbing: the knob and mouse wheel move the playhead while Premiere is in front
+        const string PremiereExe = "adobe premiere pro.exe";
+        readonly System.Windows.Forms.Timer _front = new System.Windows.Forms.Timer { Interval = 150 };
+        IntPtr _frontHwnd = IntPtr.Zero;
+        volatile bool _premiereFront;
+        uint _premierePid;
+
         public bool Paused { get { return _paused; } }
 
         public KnobRingApp(bool showWindow)
@@ -161,6 +168,9 @@ namespace KnobRing
                 }
             }) { IsBackground = true };
             waiter.Start();
+
+            _front.Tick += (s, e) => CheckFront();
+            _front.Start();
 
             WatchForUpdate();
 
@@ -364,6 +374,11 @@ namespace KnobRing
                 else _muteDown = false;
                 return true;
             }
+            if (!_ring.IsShown && (vk == VK_RIGHT || vk == VK_LEFT) && _premiereFront && c.Premiere.KnobScrub)
+            {
+                if (down) { int d = vk == VK_RIGHT ? 1 : -1; Post(() => Scrub(d)); }
+                return true;
+            }
             if (!_ring.IsShown) return false;
 
             if (vk == VK_RIGHT || vk == VK_LEFT)
@@ -389,7 +404,16 @@ namespace KnobRing
             if (msg == WM_LBUTTONUP && _swallowLeftUp) { _swallowLeftUp = false; MaybeUnhook(); return true; }
             if ((msg == WM_RBUTTONUP || msg == WM_MBUTTONUP || msg == WM_XBUTTONUP) && _swallowOtherUp)
             { _swallowOtherUp = false; MaybeUnhook(); return true; }
-            if (!_ring.IsShown) return false;
+            if (!_ring.IsShown)
+            {
+                if (msg == WM_MOUSEWHEEL && !_paused && _premiereFront && Program.Config.Premiere.WheelScrub && OverPremiere(x, y))
+                {
+                    int d = wheel < 0 ? 1 : -1;
+                    Post(() => Scrub(d));
+                    return true;
+                }
+                return false;
+            }
 
             switch (msg)
             {
@@ -419,7 +443,7 @@ namespace KnobRing
             if (_unhookPending && !_swallowLeftUp && !_swallowOtherUp && !_ring.IsShown)
             {
                 _unhookPending = false;
-                Post(() => { if (!_ring.IsShown) _mouse.Uninstall(); });
+                Post(() => { if (!WantMouse) _mouse.Uninstall(); });
             }
         }
 
@@ -610,7 +634,8 @@ namespace KnobRing
             var p = _adjust;
             bool ctrl = (Native.GetAsyncKeyState(Actions.VK_CONTROL) & 0x8000) != 0;
             bool shift = (Native.GetAsyncKeyState(Actions.VK_SHIFT) & 0x8000) != 0;
-            double step = ctrl ? p.Fine : shift ? p.Coarse : p.Step;
+            var st = Program.Config.Premiere.StepsFor(p);
+            double step = ctrl ? st[1] : shift ? st[2] : st[0];
             _ring.Renderer.AdjustSpin += dir * (ctrl ? 3f : shift ? 30f : 10f);
             int token = _adjustToken;
             Bridge.Nudge(Bridge.PortFor(_ringExe), p.Id, dir * step, res => Post(() => ShowAdjustResult(res, token)));
@@ -642,11 +667,62 @@ namespace KnobRing
             _ring.Refresh2();
         }
 
+        // ------------------------------------------------------------ Premiere scrubbing
+        bool WantMouseAfterClose { get { return _premiereFront && Program.Config.Premiere.WheelScrub; } }
+        bool WantMouse { get { return _ring.IsShown || WantMouseAfterClose; } }
+
+        void CheckFront()
+        {
+            IntPtr h = Native.GetForegroundWindow();
+            if (h != _frontHwnd)
+            {
+                _frontHwnd = h;
+                bool pr = ForegroundExe().ToLowerInvariant() == PremiereExe;
+                uint pid = 0;
+                if (pr) Native.GetWindowThreadProcessId(h, out pid);
+                _premierePid = pid;
+                _premiereFront = pr;
+            }
+            if (_paused) return;
+            if (WantMouse) _mouse.Install();
+            else if (!_swallowLeftUp && !_swallowOtherUp) _mouse.Uninstall();
+        }
+
+        bool OverPremiere(int x, int y)
+        {
+            Native.POINT p; p.X = x; p.Y = y;
+            IntPtr w = Native.WindowFromPoint(p);
+            uint pid;
+            Native.GetWindowThreadProcessId(w, out pid);
+            return pid != 0 && pid == _premierePid;
+        }
+
+        void Scrub(int dir)
+        {
+            var ps = Program.Config.Premiere;
+            bool ctrl = (Native.GetAsyncKeyState(Actions.VK_CONTROL) & 0x8000) != 0;
+            bool shift = (Native.GetAsyncKeyState(Actions.VK_SHIFT) & 0x8000) != 0;
+            double frames = ctrl ? ps.SlowFrames : shift ? ps.FastFrames : ps.NormalFrames;
+            if (ps.Invert) dir = -dir;
+            Bridge.Nudge(Bridge.PortFor(PremiereExe), "playhead", dir * frames, res =>
+            {
+                if (!res.Ok && res.Msg == "Not connected" && !_bridgeWarned)
+                    Post(() =>
+                    {
+                        if (_bridgeWarned) return;
+                        _bridgeWarned = true;
+                        Balloon("KnobRing can't reach Premiere Pro",
+                            "Restart Premiere once after installing KnobRing. Still nothing? Open Window › Extensions › KnobRing.",
+                            ToolTipIcon.Warning);
+                    });
+            }, "scrub");
+        }
+
         void CloseRing(bool fast, Action after = null)
         {
             StopAdjust();
             if (_swallowLeftUp || _swallowOtherUp) _unhookPending = true;   // wait for the button to come back up
-            else _mouse.Uninstall();
+            else if (!WantMouseAfterClose) _mouse.Uninstall();
             _idle.Stop();
             _ring.CloseRing(fast, after);
         }

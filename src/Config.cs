@@ -30,6 +30,23 @@ namespace KnobRing
         public List<RingItem> Items = new List<RingItem>();
     }
 
+    // Premiere Pro extras, edited from the KnobRing panel inside Premiere (Window > Extensions > KnobRing)
+    public class PremiereSettings
+    {
+        public bool KnobScrub = true;       // turning the knob in Premiere moves the playhead (ring closed)
+        public bool WheelScrub = true;      // so does the mouse wheel, anywhere over Premiere
+        public bool Invert = false;
+        public double SlowFrames = 1, NormalFrames = 5, FastFrames = 25;   // per knob click / wheel notch: Ctrl, plain, Shift
+        public Dictionary<string, double[]> Steps = new Dictionary<string, double[]>();   // transform id -> normal, fine, coarse
+
+        public double[] StepsFor(TransformProp p)
+        {
+            double[] v;
+            if (Steps.TryGetValue(p.Id, out v) && v != null && v.Length == 3) return v;
+            return new[] { p.Step, p.Fine, p.Coarse };
+        }
+    }
+
     public class AppConfig
     {
         public List<Ring> Rings = new List<Ring>();
@@ -42,7 +59,8 @@ namespace KnobRing
         public bool ShowLabels = true;
         public double Liquid = 0.35;                // 0 = solid glide, 1 = very gooey
         public double Ease = 0.25;                  // 0 = stiff (no overshoot), 1 = soft and bouncy
-        public bool TransformsAdded = false;        // 1.3 added a Transforms slot to the Adobe rings once
+        public bool TransformsAdded = false;
+        public PremiereSettings Premiere = new PremiereSettings();        // 1.3 added a Transforms slot to the Adobe rings once
         public int KnobPressVk = 0xAD, KnobRightVk = 0xAF, KnobLeftVk = 0xAE;   // learned from the keyboard
 
         public static string Folder
@@ -132,6 +150,30 @@ namespace KnobRing
                 }
             }
 
+            var pr = Get(root, "premiere") as IDictionary<string, object>;
+            if (pr != null)
+            {
+                var ps = cfg.Premiere;
+                ps.KnobScrub = Bool(Get(pr, "knobScrub"), true);
+                ps.WheelScrub = Bool(Get(pr, "wheelScrub"), true);
+                ps.Invert = Bool(Get(pr, "invert"), false);
+                var sf = Get(pr, "scrubFrames") as IDictionary<string, object>;
+                if (sf != null)
+                {
+                    ps.SlowFrames = Math.Max(0.01, Num(Get(sf, "slow"), 1));
+                    ps.NormalFrames = Math.Max(0.01, Num(Get(sf, "normal"), 5));
+                    ps.FastFrames = Math.Max(0.01, Num(Get(sf, "fast"), 25));
+                }
+                var st = Get(pr, "transformSteps") as IDictionary<string, object>;
+                if (st != null)
+                    foreach (var kv in st)
+                    {
+                        var arr = new List<double>();
+                        foreach (var o in List(kv.Value)) arr.Add(Math.Abs(Num(o, 0)));
+                        if (arr.Count == 3 && arr[0] > 0 && arr[1] > 0 && arr[2] > 0) ps.Steps[kv.Key] = arr.ToArray();
+                    }
+            }
+
             foreach (var ro in List(Get(root, "rings")))
             {
                 var rd = ro as IDictionary<string, object>;
@@ -195,6 +237,19 @@ namespace KnobRing
             sb.Append("    \"transformsAdded\": ").Append(TransformsAdded ? "true" : "false").Append(",\n");
             sb.Append("    \"knobKeys\": { \"press\": ").Append(KnobPressVk).Append(", \"right\": ").Append(KnobRightVk)
               .Append(", \"left\": ").Append(KnobLeftVk).Append(" }\n");
+            sb.Append("  },\n  \"premiere\": {\n");
+            var P = Premiere;
+            sb.Append("    \"knobScrub\": ").Append(P.KnobScrub ? "true" : "false").Append(",\n");
+            sb.Append("    \"wheelScrub\": ").Append(P.WheelScrub ? "true" : "false").Append(",\n");
+            sb.Append("    \"invert\": ").Append(P.Invert ? "true" : "false").Append(",\n");
+            sb.Append("    \"scrubFrames\": { \"slow\": ").Append(N(P.SlowFrames)).Append(", \"normal\": ").Append(N(P.NormalFrames))
+              .Append(", \"fast\": ").Append(N(P.FastFrames)).Append(" },\n");
+            sb.Append("    \"transformSteps\": {");
+            int si = 0;
+            foreach (var kv in P.Steps)
+                sb.Append(si++ > 0 ? ", " : " ").Append(Q(kv.Key)).Append(": [").Append(N(kv.Value[0])).Append(", ")
+                  .Append(N(kv.Value[1])).Append(", ").Append(N(kv.Value[2])).Append("]");
+            sb.Append(si > 0 ? " }\n" : "}\n");
             sb.Append("  },\n  \"rings\": [\n");
             for (int r = 0; r < Rings.Count; r++)
             {
@@ -217,6 +272,8 @@ namespace KnobRing
             sb.Append("  ]\n}\n");
             return sb.ToString();
         }
+
+        static string N(double d) { return d.ToString("0.###", CultureInfo.InvariantCulture); }
 
         static string Q(string s)
         {
