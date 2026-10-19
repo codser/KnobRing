@@ -5,7 +5,10 @@
   var cep = window.__adobe_cep__;
   var host = 'PPRO';
   try { host = JSON.parse(cep.getHostEnvironment()).appName; } catch (e) {}
-  var PORT = host === 'AEFT' ? 47322 : 47321;
+  var ext = '';
+  try { ext = cep.getExtensionId() || ''; } catch (e) {}
+  // KnobRing uses 47321 (Premiere) / 47322 (After Effects); KnobRing for Premiere has its own copy on 47341
+  var PORT = ext.indexOf('knobringpremiere') >= 0 ? 47341 : (host === 'AEFT' ? 47322 : 47321);
   var OPS = { get: 1, nudge: 1, scrub: 1 };
   var PROPS = { posx: 1, posy: 1, scale: 1, rotation: 1, opacity: 1, playhead: 1 };
 

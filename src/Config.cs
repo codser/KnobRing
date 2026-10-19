@@ -65,7 +65,7 @@ namespace KnobRing
 
         public static string Folder
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "KnobRing"); }
+            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), Edition.DataFolder); }
         }
         public static string FilePath { get { return Path.Combine(Folder, "rings.json"); } }
 
@@ -209,7 +209,7 @@ namespace KnobRing
         // ------------------------------------------------------------ save
         static readonly string[] Help =
         {
-            "KnobRing settings. Easiest to change from the KnobRing window (double-click the tray icon).",
+            Edition.Name + " settings. Easiest to change from the " + Edition.Name + " window (click the tray icon)" + (Edition.IsPremiere ? " or the KnobRing panel in Premiere (Window > Extensions)." : "."),
             "If you edit this file by hand, save it and the app reloads it automatically.",
             "apps: the .exe names a ring is for. The ring named Default (no apps) is used for every other app; other rings with no apps are sub-rings.",
             "type keys: value like Ctrl+Shift+E (several in a row: Ctrl+K, Ctrl+C). run: value is an app, file, folder or website, args optional.",

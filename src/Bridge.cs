@@ -15,13 +15,18 @@ namespace KnobRing
     // Knob turns are added up while a request is on its way, so fast spinning never queues up a backlog.
     internal static class Bridge
     {
-        public const string ExtensionFolderName = "KnobRingBridge";
+#if PREMIERE
+        // the bridge plus the settings panel shown in Premiere (Window > Extensions > KnobRing for Premiere)
         public static readonly string[] Files = { "manifest.xml", "index.html", "main.js", "host.jsx", "panel/index.html", "panel/panel.js", "panel/icons.js" };
+#else
+        public static readonly string[] Files = { "manifest.xml", "index.html", "main.js", "host.jsx" };
+#endif
 
         public class Result { public bool Ok; public string Value = ""; public string Msg = ""; }
 
         public static int PortFor(string exe)
         {
+            if (Edition.IsPremiere) return 47341;
             return (exe ?? "").ToLowerInvariant() == "afterfx.exe" ? 47322 : 47321;
         }
 
@@ -37,7 +42,7 @@ namespace KnobRing
             get
             {
                 return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                                    "Adobe", "CEP", "extensions", ExtensionFolderName);
+                                    "Adobe", "CEP", "extensions", Edition.ExtensionFolder);
             }
         }
 
@@ -70,6 +75,10 @@ namespace KnobRing
                     string rel = f == "manifest.xml" ? Path.Combine("CSXS", f) : f.Replace('/', Path.DirectorySeparatorChar);
                     changed |= WriteIfChanged(Path.Combine(ExtensionDir, rel), Res("bridge." + f.Replace('/', '.')));
                 }
+                // KnobRing 1.4 put a settings panel here; it now belongs to "KnobRing for Premiere"
+                string oldPanel = Path.Combine(ExtensionDir, "panel");
+                if (!Edition.IsPremiere && Directory.Exists(oldPanel)) { Directory.Delete(oldPanel, true); changed = true; }
+
                 // CEP only loads unsigned extensions in debug mode. One value per CEP version.
                 for (int v = 9; v <= 14; v++)
                 {

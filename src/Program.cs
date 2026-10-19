@@ -14,13 +14,13 @@ namespace KnobRing
     {
         public static AppConfig Config;
         public static DateTime LastSelfSave = DateTime.MinValue;
-        public const string OpenEventName = "KnobRing_AULA_F75_open_window";
+        public const string OpenEventName = Edition.OpenEventName;
 
         [STAThread]
         static void Main(string[] args)
         {
             bool afterUpdate = Array.Exists(args, a => a.Equals("--after-update", StringComparison.OrdinalIgnoreCase));
-            using (var mutex = new Mutex(false, "KnobRing_AULA_F75_single"))
+            using (var mutex = new Mutex(false, Edition.MutexName))
             {
                 bool owned;
                 // right after an update the old copy may still be closing: wait for it instead of quitting
@@ -85,8 +85,9 @@ namespace KnobRing
         const string PremiereExe = "adobe premiere pro.exe";
         readonly System.Windows.Forms.Timer _front = new System.Windows.Forms.Timer { Interval = 150 };
         IntPtr _frontHwnd = IntPtr.Zero;
-        volatile bool _premiereFront;
+        volatile bool _premiereFront, _yieldToPremiere;
         uint _premierePid;
+        int _yieldCheck;
 
         public bool Paused { get { return _paused; } }
 
@@ -95,6 +96,7 @@ namespace KnobRing
             bool firstRun = !File.Exists(AppConfig.FilePath);
             string err;
             Program.Config = AppConfig.LoadOrCreate(out err);
+            if (firstRun && Edition.IsPremiere) ImportLookFromKnobRing(Program.Config);
             AddTransformsOnce(Program.Config);
             Ui.Accent = Program.Config.Accent;
 
@@ -118,7 +120,7 @@ namespace KnobRing
             _tray = new NotifyIcon
             {
                 Icon = MakeTrayIcon(Program.Config.Accent),
-                Text = "KnobRing",
+                Text = Edition.Name,
                 ContextMenuStrip = menu,
                 Visible = true
             };
@@ -127,7 +129,7 @@ namespace KnobRing
             // hooks
             _keys = new KeyboardHook((vk, down) => Dispatch(vk, down, false));
             if (!_keys.Install())
-                Balloon("KnobRing couldn't hook the keyboard", "Try running it as administrator.", ToolTipIcon.Error);
+                Balloon(Edition.Name + " couldn't hook the keyboard", "Try running it as administrator.", ToolTipIcon.Error);
             _guard = new AudioGuard(() => _ring.IsShown || (_settings != null && !_settings.IsDisposed && _settings.Learning));
             _raw = new RawKnob((code, down) =>
             {
@@ -177,7 +179,30 @@ namespace KnobRing
             if (firstRun) SetStartup(true);
             else if (IsStartup()) SetStartup(true);   // refresh the path / flag
             if (err != null) Balloon("rings.json has a problem", err, ToolTipIcon.Warning);
+            if (Edition.IsPremiere)
+            {
+                if (Bridge.EnsureInstalled() || firstRun)
+                    Balloon("KnobRing for Premiere is ready", "Restart Premiere Pro once, then open Window › Extensions › KnobRing for Premiere to set it up.", ToolTipIcon.Info);
+            }
             if (showWindow || firstRun) _ring.BeginInvoke((Action)OpenSettings);
+        }
+
+        // First start of "KnobRing for Premiere": take the ring look and the learned knob keys from KnobRing, if it's installed.
+        static void ImportLookFromKnobRing(AppConfig cfg)
+        {
+            try
+            {
+                string other = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "KnobRing", "rings.json");
+                if (!File.Exists(other)) return;
+                var k = AppConfig.Parse(File.ReadAllText(other));
+                cfg.Accent = k.Accent; cfg.Size = k.Size; cfg.Liquid = k.Liquid; cfg.Ease = k.Ease;
+                cfg.TimeoutSeconds = k.TimeoutSeconds; cfg.Position = k.Position; cfg.ShowLabels = k.ShowLabels; cfg.RememberLast = k.RememberLast;
+                cfg.KnobPressVk = k.KnobPressVk; cfg.KnobRightVk = k.KnobRightVk; cfg.KnobLeftVk = k.KnobLeftVk;
+                Program.LastSelfSave = DateTime.Now;
+                File.WriteAllText(AppConfig.FilePath, cfg.ToJson());
+                Log.Write("Took the ring look and knob keys from KnobRing");
+            }
+            catch (Exception ex) { Log.Write(ex); }
         }
 
         // 1.3: put a Transforms slot on the Premiere Pro and After Effects rings, once.
@@ -211,7 +236,7 @@ namespace KnobRing
             {
                 string dir = Path.GetDirectoryName(Application.ExecutablePath);
                 CleanupOld(dir);
-                _updWatcher = new FileSystemWatcher(dir, "KnobRing.update.exe")
+                _updWatcher = new FileSystemWatcher(dir, Edition.ExeBase + ".update.exe")
                 {
                     NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
                     EnableRaisingEvents = true
@@ -224,16 +249,16 @@ namespace KnobRing
                 _updWatcher.Renamed += (s, e) => h(s, null);
                 // also look every 20 s, in case a file event was missed
                 var poll = new System.Windows.Forms.Timer { Interval = 20000 };
-                poll.Tick += (s, e) => { if (File.Exists(Path.Combine(dir, "KnobRing.update.exe")) && !debounce.Enabled) debounce.Start(); };
+                poll.Tick += (s, e) => { if (File.Exists(Path.Combine(dir, Edition.ExeBase + ".update.exe")) && !debounce.Enabled) debounce.Start(); };
                 poll.Start();
-                if (File.Exists(Path.Combine(dir, "KnobRing.update.exe"))) debounce.Start();
+                if (File.Exists(Path.Combine(dir, Edition.ExeBase + ".update.exe"))) debounce.Start();
             }
             catch (Exception ex) { Log.Write(ex); }
         }
 
         static void CleanupOld(string dir)
         {
-            string old = Path.Combine(dir, "KnobRing.old.exe");
+            string old = Path.Combine(dir, Edition.ExeBase + ".old.exe");
             if (!File.Exists(old)) return;
             var t = new System.Windows.Forms.Timer { Interval = 3000 };
             int tries = 0;
@@ -253,8 +278,8 @@ namespace KnobRing
             if (_updating) return;
             string exe = Application.ExecutablePath;
             string dir = Path.GetDirectoryName(exe);
-            string upd = Path.Combine(dir, "KnobRing.update.exe");
-            string old = Path.Combine(dir, "KnobRing.old.exe");
+            string upd = Path.Combine(dir, Edition.ExeBase + ".update.exe");
+            string old = Path.Combine(dir, Edition.ExeBase + ".old.exe");
             if (!File.Exists(upd)) return;
             _updating = true;
             Log.Write("Updating KnobRing from " + upd);
@@ -276,12 +301,12 @@ namespace KnobRing
                 if (movedSelf && !File.Exists(exe)) { try { File.Move(old, exe); } catch { } }
                 try
                 {
-                    string failed = Path.Combine(dir, "KnobRing.update.failed.exe");
+                    string failed = Path.Combine(dir, Edition.ExeBase + ".update.failed.exe");
                     if (File.Exists(failed)) File.Delete(failed);
                     if (File.Exists(upd)) File.Move(upd, failed);
                 }
                 catch { }
-                Balloon("KnobRing couldn't update itself", "Close KnobRing and replace KnobRing.exe by hand.", ToolTipIcon.Warning);
+                Balloon(Edition.Name + " couldn't update itself", "Close it and replace " + Edition.ExeBase + ".exe by hand.", ToolTipIcon.Warning);
                 _updating = false;
             }
         }
@@ -353,6 +378,11 @@ namespace KnobRing
             int VK_PRESS = c.KnobPressVk, VK_RIGHT = c.KnobRightVk, VK_LEFT = c.KnobLeftVk;
             bool knob = vk == VK_PRESS || vk == VK_RIGHT || vk == VK_LEFT;
 
+            // KnobRing steps aside in Premiere when "KnobRing for Premiere" is running there,
+            // and "KnobRing for Premiere" leaves the knob alone everywhere else.
+            if (knob && !_ring.IsShown && !Edition.IsPremiere && _yieldToPremiere) return false;
+            if (knob && !_ring.IsShown && Edition.IsPremiere && !_premiereFront && !SettingsInFront) return false;
+
             // The KnobRing window is in front: the knob drives the editor instead.
             if (knob && !_ring.IsShown && SettingsInFront)
             {
@@ -374,7 +404,7 @@ namespace KnobRing
                 else _muteDown = false;
                 return true;
             }
-            if (!_ring.IsShown && (vk == VK_RIGHT || vk == VK_LEFT) && _premiereFront && c.Premiere.KnobScrub)
+            if (Edition.IsPremiere && !_ring.IsShown && (vk == VK_RIGHT || vk == VK_LEFT) && _premiereFront && c.Premiere.KnobScrub)
             {
                 if (down) { int d = vk == VK_RIGHT ? 1 : -1; Post(() => Scrub(d)); }
                 return true;
@@ -406,7 +436,7 @@ namespace KnobRing
             { _swallowOtherUp = false; MaybeUnhook(); return true; }
             if (!_ring.IsShown)
             {
-                if (msg == WM_MOUSEWHEEL && !_paused && _premiereFront && Program.Config.Premiere.WheelScrub && OverPremiere(x, y))
+                if (Edition.IsPremiere && msg == WM_MOUSEWHEEL && !_paused && _premiereFront && Program.Config.Premiere.WheelScrub && OverPremiere(x, y))
                 {
                     int d = wheel < 0 ? 1 : -1;
                     Post(() => Scrub(d));
@@ -659,7 +689,7 @@ namespace KnobRing
                 if (res.Msg == "Not connected" && !_bridgeWarned)
                 {
                     _bridgeWarned = true;
-                    Balloon("KnobRing can't reach " + (Bridge.PortFor(_ringExe) == 47322 ? "After Effects" : "Premiere Pro"),
+                    Balloon(Edition.Name + " can't reach " + (Bridge.PortFor(_ringExe) == 47322 ? "After Effects" : "Premiere Pro"),
                         "Restart it once after installing KnobRing 1.3. Still nothing? Open Window › Extensions › KnobRing Bridge.",
                         ToolTipIcon.Warning);
                 }
@@ -668,7 +698,7 @@ namespace KnobRing
         }
 
         // ------------------------------------------------------------ Premiere scrubbing
-        bool WantMouseAfterClose { get { return _premiereFront && Program.Config.Premiere.WheelScrub; } }
+        bool WantMouseAfterClose { get { return Edition.IsPremiere && _premiereFront && Program.Config.Premiere.WheelScrub; } }
         bool WantMouse { get { return _ring.IsShown || WantMouseAfterClose; } }
 
         void CheckFront()
@@ -682,6 +712,12 @@ namespace KnobRing
                 if (pr) Native.GetWindowThreadProcessId(h, out pid);
                 _premierePid = pid;
                 _premiereFront = pr;
+                _yieldCheck = 0;
+            }
+            if (!Edition.IsPremiere && _yieldCheck-- <= 0)
+            {
+                _yieldCheck = 7;   // about once a second
+                _yieldToPremiere = _premiereFront && Edition.PremiereAppRunning();
             }
             if (_paused) return;
             if (WantMouse) _mouse.Install();
@@ -711,7 +747,7 @@ namespace KnobRing
                     {
                         if (_bridgeWarned) return;
                         _bridgeWarned = true;
-                        Balloon("KnobRing can't reach Premiere Pro",
+                        Balloon(Edition.Name + " can't reach Premiere Pro",
                             "Restart Premiere once after installing KnobRing. Still nothing? Open Window › Extensions › KnobRing.",
                             ToolTipIcon.Warning);
                     });
@@ -784,12 +820,12 @@ namespace KnobRing
         {
             _paused = p;
             if (p && _ring.IsShown) CloseRing(true);
-            _tray.Text = p ? "KnobRing (paused)" : "KnobRing";
+            _tray.Text = p ? Edition.Name + " (paused)" : Edition.Name;
         }
 
         public static bool IsStartup()
         {
-            try { using (var k = Registry.CurrentUser.OpenSubKey(RunKey)) return k != null && k.GetValue("KnobRing") != null; }
+            try { using (var k = Registry.CurrentUser.OpenSubKey(RunKey)) return k != null && k.GetValue(Edition.StartupValue) != null; }
             catch { return false; }
         }
 
@@ -799,8 +835,8 @@ namespace KnobRing
             {
                 using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
                 {
-                    if (on) k.SetValue("KnobRing", "\"" + Application.ExecutablePath + "\" --startup");
-                    else k.DeleteValue("KnobRing", false);
+                    if (on) k.SetValue(Edition.StartupValue, "\"" + Application.ExecutablePath + "\" --startup");
+                    else k.DeleteValue(Edition.StartupValue, false);
                 }
             }
             catch (Exception ex) { Log.Write(ex); }

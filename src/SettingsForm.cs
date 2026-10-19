@@ -57,7 +57,7 @@ namespace KnobRing
         public SettingsForm(KnobRingApp app) : base(1400, 880)
         {
             _app = app;
-            Text = "KnobRing";
+            Text = Edition.Name;
             StartPosition = FormStartPosition.CenterScreen;
             var wa = Screen.FromPoint(Cursor.Position).WorkingArea;
             if (Height > wa.Height) Height = wa.Height;
@@ -487,8 +487,12 @@ namespace KnobRing
             ui.Line(0, HeaderH - 0.5f, W, HeaderH - 0.5f, Th.Line);
             DrawLogo(ui, 20, 15, 30);
             ui.Text("KNOBRING", Th.Head(23), Th.Text, new RectangleF(60, 0, 140, HeaderH));
-
             float x = 196;
+            if (Edition.IsPremiere)
+            {
+                ui.Text("FOR PREMIERE", Th.Head(13), Ui.Accent, new RectangleF(166, 0, 120, HeaderH));
+                x = 290;
+            }
             foreach (var tab in new[] { "rings", "settings" })
             {
                 string label = tab.ToUpperInvariant();

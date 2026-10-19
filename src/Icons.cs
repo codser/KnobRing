@@ -14,7 +14,7 @@ namespace KnobRing
             {
                 if (_text == null)
                 {
-                    using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("rings.default.json"))
+                    using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream(Edition.DefaultsResource))
                     using (var r = new StreamReader(s)) _text = r.ReadToEnd();
                 }
                 return _text;
