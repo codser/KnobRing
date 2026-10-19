@@ -92,6 +92,11 @@ namespace KnobRing
             {"mouse", "M12 3a6 6 0 0 0-6 6v6a6 6 0 0 0 12 0V9a6 6 0 0 0-6-6z M12 7v3"},
             {"filter", "M4 5h16l-6 7.5V19l-4-2v-4.5z"},
             {"sort", "M7 4v16 M3.5 16.5L7 20l3.5-3.5 M17 20V4 M13.5 7.5L17 4l3.5 3.5"},
+            {"transform", "M6.5 6.5h11v11h-11z M4.5 4.5h3v3h-3z M16.5 4.5h3v3h-3z M4.5 16.5h3v3h-3z M16.5 16.5h3v3h-3z"},
+            {"movex", "M3.5 12h17 M7 8.5L3.5 12 7 15.5 M17 8.5l3.5 3.5-3.5 3.5"},
+            {"movey", "M12 3.5v17 M8.5 7L12 3.5 15.5 7 M8.5 17l3.5 3.5 3.5-3.5"},
+            {"scale", "M4 13v7h7 M4 20l6.5-6.5 M13 4h7v7 M20 4l-6.5 6.5"},
+            {"opacity", Circle9 + " M12 3v18 M12 7h4.6 M12 12h6 M12 17h4.6"},
         };
 
         static readonly Dictionary<string, GraphicsPath> Cache = new Dictionary<string, GraphicsPath>(StringComparer.OrdinalIgnoreCase);

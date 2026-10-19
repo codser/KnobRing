@@ -22,6 +22,13 @@ namespace KnobRing
         public float Liquid = 0.35f;        // 0 = solid glide, 1 = very gooey (shape)
         public float EaseAmount = 0.25f;          // 0 = stiff, lands exactly; 1 = soft with a little overshoot (motion)
 
+        // adjust mode (Transforms ring): the knob changes a value instead of moving the highlight
+        public bool Adjusting = false;
+        public string AdjustValue = "";
+        public string AdjustHint = "";
+        public float AdjustSpin = 0f;       // degrees; the dial on the hub turns with every knob step
+        float _spin, _adjA;
+
         // animation state
         public float Open = 1f;             // 1 = fully shown; falls to 0 while the ring closes
         public float IntroT = 99f;          // seconds since the ring appeared (bounce-in); large = already in
@@ -139,6 +146,12 @@ namespace KnobRing
             float aTarget = HubHover ? 0f : 1f;
             _blobA += (aTarget - _blobA) * (1f - (float)Math.Exp(-dt * 18f));
 
+            float adjT = Adjusting ? 1f : 0f;
+            _adjA += (adjT - _adjA) * (1f - (float)Math.Exp(-dt * 16f));
+            if (Math.Abs(adjT - _adjA) < 0.004f) _adjA = adjT; else moving = true;
+            _spin += (AdjustSpin - _spin) * (1f - (float)Math.Exp(-dt * 20f));
+            if (Math.Abs(AdjustSpin - _spin) < 0.05f) _spin = AdjustSpin; else moving = true;
+
             if (Math.Abs(_target - _head) > 0.001f || Math.Abs(_headV) > 0.01f || Math.Abs(_head - _tail) > 0.001f ||
                 Math.Abs(_tailV) > 0.01f || Math.Abs(1f - _wob) > 0.002f || Math.Abs(_wobV) > 0.02f || Math.Abs(aTarget - _blobA) > 0.01f)
                 moving = true;
@@ -240,7 +253,7 @@ namespace KnobRing
                     float rr = R * (0.72f + 0.28f * Ease(p));
                     pos[i] = new PointF((float)Math.Cos(a) * rr, (float)Math.Sin(a) * rr);
                     rad[i] = SlotR * _slotScale[i] * BackOut(p);
-                    alphas[i] = (int)(255 * local);
+                    alphas[i] = (int)(255 * local * (i == Selected ? 1f : 1f - 0.7f * _adjA));
                     if (local <= 0.001f || rad[i] <= 0.5f) continue;
                     float x = pos[i].X, y = pos[i].Y, sr = rad[i];
                     DrawShadow(g, x, y, sr, alphas[i]);
@@ -356,7 +369,43 @@ namespace KnobRing
                             (float)(mid * 180 / Math.PI) - sweep / 2, sweep);
                 }
 
+                // adjust mode: a dial of ticks around the inside of the hub turns with the knob
+                if (_adjA > 0.01f)
+                {
+                    int da = (int)(255 * hubA * _adjA);
+                    for (int k = 0; k < 36; k++)
+                    {
+                        double ang = (k * 10 + _spin - 90) * Math.PI / 180;
+                        bool major = k == 0;
+                        float r1 = HubR - 4f, r2 = HubR - (major ? 11f : 7.5f);
+                        float ty = (float)Math.Sin(ang) * r1;
+                        float fade = Math.Max(0f, Math.Min(1f, (HubR * 0.18f - ty) / (HubR * 0.2f)));   // keep the hint text clear
+                        if (fade <= 0.01f) continue;
+                        var col = major ? Color.FromArgb((int)(da * fade), Accent) : Color.FromArgb((int)(da * 0.45f * fade), 255, 255, 255);
+                        using (var tp = new Pen(col, major ? 2.6f : 1.3f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                            g.DrawLine(tp, (float)Math.Cos(ang) * r1, (float)Math.Sin(ang) * r1, (float)Math.Cos(ang) * r2, (float)Math.Sin(ang) * r2);
+                    }
+                }
+
                 // hub text
+                if (_adjA > 0.5f && n > 0 && Selected >= 0 && Selected < n)
+                {
+                    int ta = (int)(255 * hubA * Math.Min(1f, (_adjA - 0.5f) * 2f));
+                    using (var titleFont = new Font("Segoe UI", 9f, FontStyle.Regular, GraphicsUnit.Pixel))
+                    using (var valueFont = new Font("Segoe UI Semibold", (AdjustValue ?? "").Length > 8 ? 15f : 18f, FontStyle.Bold, GraphicsUnit.Pixel))
+                    using (var hintFont = new Font("Segoe UI", 8f, FontStyle.Regular, GraphicsUnit.Pixel))
+                    using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter })
+                    using (var tb = new SolidBrush(Color.FromArgb((int)(ta * 0.6f), 255, 255, 255)))
+                    using (var vb = new SolidBrush(Color.FromArgb(ta, 255, 255, 255)))
+                    using (var hb = new SolidBrush(Color.FromArgb((int)(ta * 0.5f), 255, 255, 255)))
+                    {
+                        g.DrawString(Items[Selected].Label.ToUpperInvariant(), titleFont, tb, new RectangleF(-HubR + 12, -HubR * 0.58f, HubR * 2 - 24, 13), sf);
+                        g.DrawString(AdjustValue ?? "", valueFont, vb, new RectangleF(-HubR + 10, -12, HubR * 2 - 20, 26), sf);
+                        g.DrawString(AdjustHint ?? "", hintFont, hb, new RectangleF(-HubR + 14, HubR * 0.34f, HubR * 2 - 28, 12), sf);
+                    }
+                    g.Restore(hubState);
+                    return bmp;
+                }
                 string label = HubHover ? "Close" : !ShowLabels ? "" : (n > 0 && Selected >= 0 && Selected < n ? Items[Selected].Label : "");
                 using (var titleFont = new Font("Segoe UI", 9.5f, FontStyle.Regular, GraphicsUnit.Pixel))
                 using (var labelFont = new Font("Segoe UI Semibold", label.Length > 14 ? 11.5f : 13f, FontStyle.Bold, GraphicsUnit.Pixel))

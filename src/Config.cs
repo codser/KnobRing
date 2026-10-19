@@ -13,7 +13,7 @@ namespace KnobRing
     {
         public string Label = "";
         public string Icon = "";
-        public string Type = "keys";   // keys | run | text | media | ring
+        public string Type = "keys";   // keys | run | text | media | ring | transform
         public string Value = "";
         public string Args = "";
 
@@ -42,6 +42,7 @@ namespace KnobRing
         public bool ShowLabels = true;
         public double Liquid = 0.35;                // 0 = solid glide, 1 = very gooey
         public double Ease = 0.25;                  // 0 = stiff (no overshoot), 1 = soft and bouncy
+        public bool TransformsAdded = false;        // 1.3 added a Transforms slot to the Adobe rings once
         public int KnobPressVk = 0xAD, KnobRightVk = 0xAF, KnobLeftVk = 0xAE;   // learned from the keyboard
 
         public static string Folder
@@ -119,6 +120,7 @@ namespace KnobRing
                 cfg.ShowLabels = Bool(Get(settings, "showLabels"), true);
                 cfg.Liquid = Math.Max(0, Math.Min(1, Num(Get(settings, "liquid"), 35) / 100.0));
                 cfg.Ease = Math.Max(0, Math.Min(1, Num(Get(settings, "ease"), 25) / 100.0));
+                cfg.TransformsAdded = Bool(Get(settings, "transformsAdded"), false);
                 var pos = Str(Get(settings, "position")).ToLowerInvariant();
                 cfg.Position = pos == "center" || pos == "centre" ? "center" : "mouse";
                 var kk = Get(settings, "knobKeys") as IDictionary<string, object>;
@@ -170,6 +172,7 @@ namespace KnobRing
             "apps: the .exe names a ring is for. The ring named Default (no apps) is used for every other app; other rings with no apps are sub-rings.",
             "type keys: value like Ctrl+Shift+E (several in a row: Ctrl+K, Ctrl+C). run: value is an app, file, folder or website, args optional.",
             "type text: value is text to type. media: playpause, next, prev, stop, mute, volup, voldown. ring: value is the name of a sub-ring.",
+            "type transform: opens Position X/Y, Scale, Rotation and Opacity for the selected clips in Premiere Pro or layers in After Effects.",
             "icon: an icon name, 1-3 letters, or a path to a .png file."
         };
 
@@ -189,6 +192,7 @@ namespace KnobRing
             sb.Append("    \"showLabels\": ").Append(ShowLabels ? "true" : "false").Append(",\n");
             sb.Append("    \"liquid\": ").Append((int)Math.Round(Liquid * 100)).Append(",\n");
             sb.Append("    \"ease\": ").Append((int)Math.Round(Ease * 100)).Append(",\n");
+            sb.Append("    \"transformsAdded\": ").Append(TransformsAdded ? "true" : "false").Append(",\n");
             sb.Append("    \"knobKeys\": { \"press\": ").Append(KnobPressVk).Append(", \"right\": ").Append(KnobRightVk)
               .Append(", \"left\": ").Append(KnobLeftVk).Append(" }\n");
             sb.Append("  },\n  \"rings\": [\n");

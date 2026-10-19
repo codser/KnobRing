@@ -13,7 +13,7 @@ namespace KnobRing
     {
         const float HeaderH = 60, SideW = 250, PanelW = 390;
 
-        static readonly string[,] Types = { { "keys", "Shortcut" }, { "run", "Open" }, { "text", "Type text" }, { "media", "Media" }, { "ring", "Sub-ring" } };
+        static readonly string[,] Types = { { "keys", "Shortcut" }, { "run", "Open" }, { "text", "Type text" }, { "media", "Media" }, { "ring", "Sub-ring" }, { "transform", "Transforms" } };
         static readonly string[,] Media = { { "playpause", "Play / Pause" }, { "next", "Next track" }, { "prev", "Previous track" },
                                             { "mute", "Mute" }, { "volup", "Volume up" }, { "voldown", "Volume down" } };
         static readonly string[] Swatches = { "#2F6BFF", "#00B4D8", "#7C5CFF", "#FF4D8D", "#FF8A1F", "#2BD67B" };
@@ -374,6 +374,7 @@ namespace KnobRing
                     for (int i = 0; i < Media.GetLength(0); i++) if (Media[i, 0] == it.Value) return Media[i, 1];
                     return "Media key";
                 case "ring": return "Opens " + (string.IsNullOrEmpty(it.Value) ? "a sub-ring" : it.Value);
+                case "transform": return "Position, Scale, Rotation, Opacity";
             }
             return "";
         }
@@ -760,6 +761,22 @@ namespace KnobRing
                     else ui.Button(br, "Create sub-ring “" + it.Value + "”", Ui.B.Primary, () => CreateSubRing(it.Value), false, "add");
                     ui.Text("Opens another ring of up to 12 actions. A Back slot is added to it automatically.", Th.Body(12), Th.Muted,
                         new RectangleF(px, 446, pw, 40), StringAlignment.Near, StringAlignment.Near, true);
+                    break;
+                case "transform":
+                    ui.Caption("Transforms", px, 328);
+                    ui.Text("Opens Position X, Position Y, Scale, Rotation and Opacity for the selected clips in Premiere Pro " +
+                            "(or layers in After Effects). Pick one with the knob, press, then turn to change it. " +
+                            "Hold Ctrl for small steps, Shift for big ones. Press again to pick another.",
+                        Th.Body(12.5f), Th.Soft, new RectangleF(px, 350, pw, 92), StringAlignment.Near, StringAlignment.Near, true);
+                    bool inst = System.IO.File.Exists(System.IO.Path.Combine(Bridge.ExtensionDir, "host.jsx"));
+                    ui.Button(new RectangleF(px, 446, pw, 40), inst ? "Bridge installed · reinstall" : "Install the Adobe bridge",
+                        inst ? Ui.B.Normal : Ui.B.Primary, () =>
+                        {
+                            Bridge.EnsureInstalled();
+                            MessageBox.Show(this, "The KnobRing Bridge is installed for Premiere Pro and After Effects.\n\nRestart them once so they load it.",
+                                "KnobRing", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            Sf.Invalidate();
+                        }, false, "check");
                     break;
             }
 

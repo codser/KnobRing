@@ -76,6 +76,10 @@ namespace KnobRing
         bool _swallowLeftUp, _swallowOtherUp, _unhookPending, _mouseActive;
         Point _mouseOrigin;
         DateTime _lastInput;
+        string _ringExe = "";             // the app that was in front when the ring opened
+        TransformProp _adjust;            // set while the knob is changing a Transforms value
+        int _adjustToken;
+        bool _bridgeWarned;
 
         public bool Paused { get { return _paused; } }
 
@@ -84,6 +88,7 @@ namespace KnobRing
             bool firstRun = !File.Exists(AppConfig.FilePath);
             string err;
             Program.Config = AppConfig.LoadOrCreate(out err);
+            AddTransformsOnce(Program.Config);
             Ui.Accent = Program.Config.Accent;
 
             _ring = new RingWindow();
@@ -140,6 +145,7 @@ namespace KnobRing
             _idle.Tick += (s, e) =>
             {
                 double t = Program.Config.TimeoutSeconds;
+                if (_adjust != null) t *= 3;
                 if (_ring.IsShown && t > 0 && (DateTime.Now - _lastInput).TotalSeconds > t)
                     CloseRing(false);
             };
@@ -162,6 +168,29 @@ namespace KnobRing
             else if (IsStartup()) SetStartup(true);   // refresh the path / flag
             if (err != null) Balloon("rings.json has a problem", err, ToolTipIcon.Warning);
             if (showWindow || firstRun) _ring.BeginInvoke((Action)OpenSettings);
+        }
+
+        // 1.3: put a Transforms slot on the Premiere Pro and After Effects rings, once.
+        static void AddTransformsOnce(AppConfig cfg)
+        {
+            if (cfg.TransformsAdded) return;
+            cfg.TransformsAdded = true;
+            foreach (var r in cfg.Rings)
+            {
+                bool adobe = false;
+                foreach (var a in r.Apps) if (Bridge.IsSupportedApp(a)) adobe = true;
+                if (!adobe || r.Items.Count >= 12) continue;
+                bool has = false;
+                foreach (var it in r.Items) if (it.Type == "transform") has = true;
+                if (!has) r.Items.Add(new RingItem { Label = "Transforms", Icon = "transform", Type = "transform" });
+            }
+            try
+            {
+                Program.LastSelfSave = DateTime.Now;
+                File.WriteAllText(AppConfig.FilePath, cfg.ToJson());
+            }
+            catch (Exception ex) { Log.Write(ex); }
+            if (Bridge.EnsureInstalled()) Log.Write("Installed the KnobRing Bridge extension for Premiere Pro / After Effects");
         }
 
         // ------------------------------------------------------------ self-update
@@ -396,7 +425,7 @@ namespace KnobRing
 
         void MouseMoved(int x, int y)
         {
-            if (!_ring.IsShown || _items.Count == 0) return;
+            if (!_ring.IsShown || _items.Count == 0 || _adjust != null) return;
             if (!_mouseActive)
             {
                 int dx0 = x - _mouseOrigin.X, dy0 = y - _mouseOrigin.Y;
@@ -424,6 +453,7 @@ namespace KnobRing
             string exe = ForegroundExe();
             var ring = Program.Config.FindForApp(exe);
             if (ring == null) return;
+            _ringExe = exe;
             _stack.Clear();
             SetCurrent(ring);
             Native.POINT p;
@@ -448,6 +478,7 @@ namespace KnobRing
 
         void SetCurrent(Ring r)
         {
+            StopAdjust();
             _current = r;
             _items = new List<RingItem>(r.Items);
             if (_stack.Count > 0) _items.Add(new RingItem { Label = "Back", Icon = "back", Type = "__back" });
@@ -463,6 +494,7 @@ namespace KnobRing
         {
             if (!_ring.IsShown || _items.Count == 0) return;
             _ring.KnobUsed();
+            if (_adjust != null) { Adjust(dir); return; }
             Native.POINT cp;
             Native.GetCursorPos(out cp);
             _mouseOrigin = new Point(cp.X, cp.Y);
@@ -481,9 +513,27 @@ namespace KnobRing
         void Select()
         {
             if (!_ring.IsShown || _items.Count == 0) return;
+            if (_adjust != null) { StopAdjust(); Touch(); UpdateRing(); return; }   // press again: back to the list
             if (_ring.Renderer.HubHover) { CloseRing(false); return; }
             var it = _items[_selected];
             Touch();
+
+            if (it.Type == "transform")
+            {
+                if (Bridge.EnsureInstalled())
+                    Balloon("Transforms is set up", "Restart Premiere Pro / After Effects once so KnobRing can reach it.", ToolTipIcon.Info);
+                _lastUsed[_current.Name] = _selected;
+                _stack.Push(_current);
+                SetCurrent(TransformRing(it.Label));
+                _ring.Replay();
+                return;
+            }
+            if (it.Type == "__prop")
+            {
+                _lastUsed[_current.Name] = _selected;
+                StartAdjust(TransformProp.Find(it.Value));
+                return;
+            }
 
             if (it.Type == "__back")
             {
@@ -522,8 +572,79 @@ namespace KnobRing
             });
         }
 
+        // ------------------------------------------------------------ Transforms
+        static Ring TransformRing(string label)
+        {
+            var r = new Ring { Name = string.IsNullOrWhiteSpace(label) ? "Transforms" : label };
+            foreach (var p in TransformProp.All)
+                r.Items.Add(new RingItem { Label = p.Label, Icon = p.Icon, Type = "__prop", Value = p.Id });
+            return r;
+        }
+
+        const string AdjustHintText = "Ctrl fine · Shift fast";
+
+        void StartAdjust(TransformProp p)
+        {
+            if (p == null) return;
+            _adjust = p;
+            int token = ++_adjustToken;
+            var rr = _ring.Renderer;
+            rr.HubHover = false;
+            rr.Adjusting = true;
+            rr.AdjustValue = "…";
+            rr.AdjustHint = AdjustHintText;
+            UpdateRing();
+            Bridge.Get(Bridge.PortFor(_ringExe), p.Id, res => Post(() => ShowAdjustResult(res, token)));
+        }
+
+        void StopAdjust()
+        {
+            if (_adjust == null) return;
+            _adjust = null;
+            _adjustToken++;
+            _ring.Renderer.Adjusting = false;
+        }
+
+        void Adjust(int dir)
+        {
+            var p = _adjust;
+            bool ctrl = (Native.GetAsyncKeyState(Actions.VK_CONTROL) & 0x8000) != 0;
+            bool shift = (Native.GetAsyncKeyState(Actions.VK_SHIFT) & 0x8000) != 0;
+            double step = ctrl ? p.Fine : shift ? p.Coarse : p.Step;
+            _ring.Renderer.AdjustSpin += dir * (ctrl ? 3f : shift ? 30f : 10f);
+            int token = _adjustToken;
+            Bridge.Nudge(Bridge.PortFor(_ringExe), p.Id, dir * step, res => Post(() => ShowAdjustResult(res, token)));
+            Touch();
+            _ring.Refresh2();
+        }
+
+        void ShowAdjustResult(Bridge.Result res, int token)
+        {
+            if (token != _adjustToken || _adjust == null || !_ring.IsShown) return;
+            var rr = _ring.Renderer;
+            if (res.Ok)
+            {
+                rr.AdjustValue = res.Value;
+                rr.AdjustHint = string.IsNullOrEmpty(res.Msg) ? AdjustHintText : res.Msg;
+            }
+            else
+            {
+                rr.AdjustValue = "—";
+                rr.AdjustHint = res.Msg;
+                if (res.Msg == "Not connected" && !_bridgeWarned)
+                {
+                    _bridgeWarned = true;
+                    Balloon("KnobRing can't reach " + (Bridge.PortFor(_ringExe) == 47322 ? "After Effects" : "Premiere Pro"),
+                        "Restart it once after installing KnobRing 1.3. Still nothing? Open Window › Extensions › KnobRing Bridge.",
+                        ToolTipIcon.Warning);
+                }
+            }
+            _ring.Refresh2();
+        }
+
         void CloseRing(bool fast, Action after = null)
         {
+            StopAdjust();
             if (_swallowLeftUp || _swallowOtherUp) _unhookPending = true;   // wait for the button to come back up
             else _mouse.Uninstall();
             _idle.Stop();

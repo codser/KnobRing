@@ -23,6 +23,8 @@ KnobRing was built for the **AULA F75**, but works with any keyboard whose knob 
   - type a piece of text
   - press a media key
   - open a sub-ring with more actions
+  - open the **Transforms** ring (Premiere Pro and After Effects)
+- **Transforms with the knob.** Pick *Position X*, *Position Y*, *Scale*, *Rotation* or *Opacity*, press the knob, then turn it to change that value on every selected clip (Premiere Pro) or layer (After Effects). Hold **Ctrl** for fine steps and **Shift** for big ones, and press again to pick another property. Keyframed properties get a keyframe at the playhead. This works through a small extension, *KnobRing Bridge*, that KnobRing installs into Premiere Pro and After Effects. Restart them once after installing.
 - **Liquid highlight.** The highlight flows between options. *Liquid feel* sets its shape, from a solid glide to fully gooey, and *Ease* sets its motion, from stiff (lands exactly, no overshoot) to soft.
 - **Minimal line icons** for every action, plus a bouncy opening: the centre pops in first, then the options appear one by one down both sides of the ring.
 - **A settings window in the style of G HUB.**
@@ -99,6 +101,8 @@ Both write `out/KnobRing.exe`.
 | `Actions.cs` | Parses and sends shortcuts, text, media keys and launches |
 | `Config.cs` | Loads and saves `rings.json` |
 | `VectorIcons.cs` | KnobRing's own line icons, drawn from SVG-style paths |
+| `Bridge.cs` | Installs the Adobe extension and sends knob turns to it (merged while a request is in flight) |
+| `bridge/` | The *KnobRing Bridge* CEP extension: a local HTTP listener (`main.js`) and the ExtendScript that changes Motion and Opacity (`host.jsx`) |
 
 ## Notes
 
